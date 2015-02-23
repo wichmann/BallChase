@@ -1,3 +1,5 @@
+#! /usr/bin/env python
+
 from __future__ import division, print_function, unicode_literals
 
 import math
@@ -14,8 +16,9 @@ from cocos.menu import CENTER, shake, shake_back
 from cocos.text import Label
 
 import pyglet
+from pyglet import clock
 from pyglet.window import key
-
+from pyglet.event import EventDispatcher
 import soundex
 
 
@@ -24,12 +27,24 @@ NUMBER_OF_ENEMIES = 2
 ENEMY_SPEED = 50
 PLAYER_SPEED = 200   # speed of players ball in pixel per second
 
+LEVEL_DATA = (
+    # number_of_enemies, enemy_speed, time, level
+    (2, 50, 20, 1),
+    (3, 60, 25, 2),
+    #(3, 70, 30, 3),
+    #(4, 80, 35, 4),
+    #(4, 90, 40, 5),
+    #(5, 100, 45, 6),
+    #(5, 110, 50, 7),
+    #(6, 120, 55, 8)
+)
+
 
 class Chase(Action):
     """Defining an action for a sprite to move constantly towards some other
     object. Second constructor 'init2()' is a workaround because deepcopy can't
     handle a bound method nor a cocosnode.
-    
+
     Source: cocos source file test/test_action_non_interval.py
     """
     def init(self, fastness):
@@ -51,31 +66,47 @@ class Chase(Action):
         self.target.position = (x, y)
         if math.hypot(x1-x, y1-y) < 5:
             self._done = True
-  
+
     def stop(self):
         self.chasee.do(RotateBy(360, 1.0))
         self.on_bullet_hit(self.target)
 
 
-class GameLayer(Layer):
+class GameLayer(Layer, EventDispatcher):
     # layer receives director.window events
     is_event_handler = True
 
-    def __init__(self, number_of_enemies, enemy_speed):
+    def __init__(self, number_of_enemies, enemy_speed, time, level):
         super(GameLayer, self ).__init__()
 
         self.game_over = False
-        
+        self.remaining_seconds = time
+
         # add sprite for ball
         self.player_ball = Sprite('ball.png')
-        x, y = director.get_window_size()
-        self.player_ball.position = (x//2, y//2)
+        width, height = director.get_window_size()
+        self.player_ball.position = (width//2, height//2)
         self.add(self.player_ball)
-        
+
+        # add labels for level number and time
+        level_number = Label('Level {}'.format(level), (20, 10),
+                             font_name='Edit Undo Line BRK',
+                             font_size=26,
+                             anchor_x='left', anchor_y='bottom')
+        self.add(level_number)
+        self.remaining_time = Label('{} seconds left'.format(self.remaining_seconds),
+                                    (width - 20, 10),
+                                    font_name='Edit Undo Line BRK', font_size=26,
+                                    anchor_x='right', anchor_y='bottom')
+        self.add(self.remaining_time)
+        # setup timer for remaining game time
+        clock.schedule_interval(self.on_timer_second, 1)
+
         # add bot balls in random spots on screen
         for i in range(number_of_enemies):
             botball = Sprite('ball2.png')
-            botball.position = (random.randint(0, x), random.randint(0, y))
+            botball.position = (random.randint(0, width),
+                                random.randint(0, height))
             chase_action = botball.do(Chase(enemy_speed))
             chase_action.init2(self.player_ball, self.on_player_lose)
             self.add(botball, z=1)
@@ -89,8 +120,27 @@ class GameLayer(Layer):
         super(GameLayer,self).on_exit()
         soundex.stop_music()
 
+    def on_timer_second(self, time):
+        if self.remaining_seconds:
+            self.remaining_seconds -= 1
+            print(self.remaining_seconds)
+            self.remaining_time.text = '{} seconds left'.format(self.remaining_seconds)
+            self.remove(self.remaining_time)
+            self.add(self.remaining_time)
+        else:
+            self.on_player_win()
+
+    def stop_game(self):
+        # stop timer for remaining game time
+        clock.unschedule(self.on_timer_second)
+        # stop all other bot balls
+        for node in self.get_children():
+            node.stop()
+
     def on_player_lose(self, e):
         if not self.game_over:
+            self.stop_game()
+            # show game over screen over game board
             self.game_over = True
             self.overlay_layer = Layer()
             width, height = director.get_window_size()
@@ -101,14 +151,16 @@ class GameLayer(Layer):
             self.overlay_layer.add(gameover_text)
             self.parent.add(self.overlay_layer, z=2)
             gameover_text.do(FadeIn(3.0))
+            # play lose sound effect
             soundex.play('no.mp3')
-            #if win:
-            #    soundex.play('oh_yeah.mp3')
-            #    msg = 'YOU WIN'
-            #else:
-            #    soundex.play('no.mp3')
-            #    msg = 'GAME OVER'
+            # emit event to inform other game components
+            self.dispatch_event('on_level_lost', self)
 
+    def on_player_win(self):
+        self.stop_game()
+        # TODO show kill screen!
+        self.dispatch_event('on_level_won', self)
+        
     def on_key_press(self, symbol, modifiers):
         if self.game_over:
             return
@@ -116,7 +168,7 @@ class GameLayer(Layer):
         if symbol == key.LEFT:
             self.check_bounds()
             self.repeat = Repeat(MoveBy((-PLAYER_SPEED//10, 0), 0.1))
-            self.player_ball.do(self.repeat)            
+            self.player_ball.do(self.repeat)
         elif symbol == key.RIGHT:
             self.check_bounds()
             self.repeat = Repeat(MoveBy((PLAYER_SPEED//10, 0), 0.1))
@@ -124,7 +176,7 @@ class GameLayer(Layer):
         elif symbol == key.UP:
             self.check_bounds()
             self.repeat = Repeat(MoveBy((0, PLAYER_SPEED//10), 0.1))
-            self.player_ball.do(self.repeat)            
+            self.player_ball.do(self.repeat)
         elif symbol == key.DOWN:
             self.check_bounds()
             self.repeat = Repeat(MoveBy((0, -PLAYER_SPEED//10), 0.1))
@@ -166,6 +218,10 @@ class GameLayer(Layer):
         # move ball to new position
         move_to_mouse = MoveTo((x, y), distance/PLAYER_SPEED)
         self.player_ball.do(move_to_mouse)
+
+# register events that GameLayer instances can emit
+GameLayer.register_event_type('on_level_lost')
+GameLayer.register_event_type('on_level_won')
 
 
 class BackgroundLayer(Layer):
@@ -231,6 +287,9 @@ class MainMenu(Menu):
     def __init__(self):
         super(MainMenu, self).__init__(APP_NAME)
 
+        # set level counter on zero to start with first level
+        self.current_level = 0
+
         # override the font used for the title and the items
         self.font_title['font_name'] = 'Edit Undo Line BRK'
         self.font_title['font_size'] = 72
@@ -256,8 +315,12 @@ class MainMenu(Menu):
     def on_new_game(self):
         # create a new game layer, insert it in a new scene and replace
         # curretly played scene with it
-        new_game = GameLayer(NUMBER_OF_ENEMIES, ENEMY_SPEED)
-        director.replace(FlipAngular3DTransition(Scene(new_game), 1.5))
+        next_level_data = LEVEL_DATA[self.current_level]
+        new_level = GameLayer(*next_level_data)
+        # register this class as listener on events from GameLayer to react
+        # when player has lost/won the level
+        new_level.push_handlers(self.on_level_lost, self.on_level_won)
+        director.replace(FlipAngular3DTransition(Scene(new_level), 1.5))
 
     def on_options( self ):
         # make MultiplexLayer switch to the options menu
@@ -265,6 +328,16 @@ class MainMenu(Menu):
 
     def on_quit(self):
         pyglet.app.exit()
+
+    def on_level_lost(self, emitter):
+        print('lost!')
+
+    def on_level_won(self, emitter):
+        if self.current_level < len(LEVEL_DATA) - 1:
+            self.current_level += 1
+            self.on_new_game()
+        else:
+            print('won!')
 
 
 if __name__ == "__main__":

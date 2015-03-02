@@ -26,6 +26,7 @@ import soundex
 
 APP_NAME = 'BallChase'
 PLAYER_SPEED = 150   # speed of players ball in pixel per second
+WRAP_AT_BOUNDS = True
 LEVEL_DATA = (
     # number_of_enemies, enemy_speed, time, level
     (2, 50, 20, 1),
@@ -66,6 +67,7 @@ class Chase(Action):
         mod = math.hypot(dx, dy)
         x = self.fastness * dt * (x1-x0) / mod+x0
         y = self.fastness * dt * (y1-y0) / mod+y0
+        # TODO Add some random element to bot ball movement!
         self.target.position = (x, y)
         if math.hypot(x1-x, y1-y) < 5:
             self._done = True
@@ -127,6 +129,7 @@ class GameLayer(Layer, EventDispatcher):
     def on_timer_second(self, time):
         if self.remaining_seconds:
             self.remaining_seconds -= 1
+            # FIXME Fix the display of remaining game time.
             self.remaining_time.text = '{} seconds left'.format(self.remaining_seconds)
             self.remove(self.remaining_time)
             self.add(self.remaining_time)
@@ -161,13 +164,16 @@ class GameLayer(Layer, EventDispatcher):
 
     def on_player_win(self):
         self.stop_game()
-        # TODO show kill screen!
+        # TODO Show game end screen!
+        # TODO Add scoring and allow player to enter his name after winning or losing a game.
         self.dispatch_event('on_level_won', self)
         
     def on_key_press(self, symbol, modifiers):
         if self.game_over:
             return
         self.key_still_pressed = True
+        # TODO Allow multiple keys to be pressed at the same moment.
+        # TODO Allow diagonal movement.
         if symbol == key.LEFT:
             self.check_bounds()
             self.repeat = Repeat(MoveBy((-PLAYER_SPEED//10, 0), 0.1))
@@ -265,11 +271,16 @@ class OptionsMenu(Menu):
         items.append(MultipleMenuItem('Music volume: ',self.on_music_volume,self.volumes,int(soundex.music_player.volume * 10)))
         items.append(ToggleMenuItem('Show FPS:', self.on_show_fps, director.show_FPS))
         items.append(ToggleMenuItem('Fullscreen:', self.on_fullscreen, director.window.fullscreen))
+        items.append(ToggleMenuItem('Wrap at bounds:', self.on_wrap_bounds, WRAP_AT_BOUNDS))
         items.append(MenuItem('Back', self.on_quit))
         self.create_menu(items, shake(), shake_back())
 
     def on_fullscreen(self, value):
         director.window.set_fullscreen(value)
+
+    def on_wrap_bounds(self, value):
+        global WRAP_AT_BOUNDS
+        WRAP_AT_BOUNDS = value
 
     def on_quit(self):
         self.parent.switch_to(0)

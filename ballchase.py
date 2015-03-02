@@ -1,5 +1,6 @@
 #! /usr/bin/env python
 
+# make sure that this script behaves the same under Python 2 and Python 3
 from __future__ import division, print_function, unicode_literals
 
 import math
@@ -9,7 +10,8 @@ from cocos.director import director, glPushMatrix, glPopMatrix
 from cocos.layer import Layer, MultiplexLayer
 from cocos.scene import Scene
 from cocos.scenes.transitions import FlipAngular3DTransition
-from cocos.actions import MoveBy, MoveTo, RotateBy, Repeat, Action, FadeIn
+from cocos.actions import MoveBy, MoveTo, ScaleBy, FadeIn
+from cocos.actions import Reverse, Repeat, Action
 from cocos.sprite import Sprite
 from cocos.menu import Menu, MultipleMenuItem, MenuItem, ToggleMenuItem
 from cocos.menu import CENTER, shake, shake_back
@@ -23,20 +25,21 @@ import soundex
 
 
 APP_NAME = 'BallChase'
-NUMBER_OF_ENEMIES = 2
-ENEMY_SPEED = 50
-PLAYER_SPEED = 200   # speed of players ball in pixel per second
-
+PLAYER_SPEED = 150   # speed of players ball in pixel per second
 LEVEL_DATA = (
     # number_of_enemies, enemy_speed, time, level
     (2, 50, 20, 1),
     (3, 60, 25, 2),
-    #(3, 70, 30, 3),
-    #(4, 80, 35, 4),
-    #(4, 90, 40, 5),
-    #(5, 100, 45, 6),
-    #(5, 110, 50, 7),
-    #(6, 120, 55, 8)
+    (3, 70, 30, 3),
+    (4, 80, 35, 4),
+    (4, 90, 40, 5),
+    (5, 100, 45, 6),
+    (5, 110, 50, 7),
+    (6, 120, 55, 8),
+    (6, 130, 60, 9),
+    (7, 140, 65, 10),
+    (8, 150, 70, 11),
+    (9, 160, 90, 12),
 )
 
 
@@ -68,7 +71,8 @@ class Chase(Action):
             self._done = True
 
     def stop(self):
-        self.chasee.do(RotateBy(360, 1.0))
+        scale = ScaleBy(2, duration=0.5)
+        self.chasee.do(scale + Reverse(scale))
         self.on_bullet_hit(self.target)
 
 
@@ -123,7 +127,6 @@ class GameLayer(Layer, EventDispatcher):
     def on_timer_second(self, time):
         if self.remaining_seconds:
             self.remaining_seconds -= 1
-            print(self.remaining_seconds)
             self.remaining_time.text = '{} seconds left'.format(self.remaining_seconds)
             self.remove(self.remaining_time)
             self.add(self.remaining_time)
@@ -131,6 +134,7 @@ class GameLayer(Layer, EventDispatcher):
             self.on_player_win()
 
     def stop_game(self):
+        self.game_over = True
         # stop timer for remaining game time
         clock.unschedule(self.on_timer_second)
         # stop all other bot balls
@@ -141,7 +145,6 @@ class GameLayer(Layer, EventDispatcher):
         if not self.game_over:
             self.stop_game()
             # show game over screen over game board
-            self.game_over = True
             self.overlay_layer = Layer()
             width, height = director.get_window_size()
             gameover_text = Label('Game Over!', (width//2, height//4*3),

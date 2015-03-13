@@ -142,7 +142,6 @@ class GameLayer(Layer, EventDispatcher):
     def on_timer_second(self, time):
         if self.remaining_seconds:
             self.remaining_seconds -= 1
-            # FIXME Fix the display of remaining game time.
             self.remaining_time.element.text = '{} seconds left'.format(self.remaining_seconds)
         else:
             self.on_player_win()

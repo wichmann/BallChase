@@ -111,11 +111,24 @@ class GameLayer(Layer, EventDispatcher):
         # add bot balls in random spots on screen
         for i in range(number_of_enemies):
             botball = Sprite('ball2.png')
-            botball.position = (random.randint(0, width),
-                                random.randint(0, height))
+            botball.position = self.generate_random_position(self.player_ball.position, width, height)
             chase_action = botball.do(Chase(enemy_speed))
             chase_action.init2(self.player_ball, self.on_player_lose)
             self.add(botball, z=1)
+
+    def generate_random_position(self, player_position, width, height):
+        distance = 0
+        counter = 0
+        while distance < 200:
+            positon = (random.randint(0, width), random.randint(0, height))
+            distance = self.calculate_distance(player_position, positon)
+            counter += 1
+        print("It took {} tries to get a valid position.".format(counter))
+        return positon
+
+    def calculate_distance(self, target1_pos, target2_pos):
+        distance_x, distance_y = [player_pos - bot_pos for player_pos, bot_pos in zip(target1_pos, target2_pos)]
+        return math.sqrt(distance_x * distance_x + distance_y * distance_y)
 
     def on_enter(self):
         super(GameLayer,self).on_enter()
@@ -130,9 +143,7 @@ class GameLayer(Layer, EventDispatcher):
         if self.remaining_seconds:
             self.remaining_seconds -= 1
             # FIXME Fix the display of remaining game time.
-            self.remaining_time.text = '{} seconds left'.format(self.remaining_seconds)
-            self.remove(self.remaining_time)
-            self.add(self.remaining_time)
+            self.remaining_time.element.text = '{} seconds left'.format(self.remaining_seconds)
         else:
             self.on_player_win()
 
